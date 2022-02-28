@@ -1,0 +1,498 @@
+---
+title: 'Predicting Life Expectancy'
+author: "Cara Braasch"
+output:
+  html_document:
+    toc: yes
+  pdf_document:
+    toc: yes
+---
+
+```{r setup, echo = FALSE, message = FALSE, warning = FALSE}
+options(scipen = 1, digits = 4, width = 80)
+library(knitr)
+opts_chunk$set(cache = TRUE, autodep = TRUE)
+```
+
+
+# Introduction 
+
+Throughout history, life expectancy has overall increased. Despite this fact, different countries have varying life expectancies. This study aims to model the impact of potential factors on the life expectancy of different countries, so as to understand their effect on life expectancy in order to improve life expectancy across the world and thus advance the human condition. 
+
+The response variable I have chosen in this study is life expectancy, and the data set I are using, called “Life Expectancy Data,” is a combination of health data from the World Health Organization and economic data from the United Nations websites between years 2000-2015 (https://www.kaggle.com/kumarajarshi/life-expectancy-who). It contains 22 variables recorded from 193 different countries. The life expectancy data that I found is a combination of data from the World Health organization and the United Nations from 2000-2015. The data comprises primarily of health and economic data. I hope to explore which variables have the greatest impact and predictive power on life expectancy. This will help identify areas that can be improved to increase life expectancy in the future in order to advance the human condition.
+
+
+Variables:
+1.  Country: Country where the data was collected from
+
+2.  Year: Year the data was taken
+
+3.  Status: The status of the country in terms of Developed or Developing
+
+4.  Life Expectancy: Average Life Expectancy in that year in terms of age
+
+5.  Adult Mortality: Mortality rates of Adults (age 15-60) per 1000 population
+
+6.  Infant Deaths: Number of Infant Deaths per 1000 population
+
+7.  Alcohol: Alcohol, recorded per capita (15+) consumption (in litres of pure alcohol)
+
+8.  Percentage Expenditure: Expenditure on health as a percentage of Gross Domestic Product per capita
+
+9.  Hepatitis B: Hepatitis B (HepB) immunization coverage among 1-year-olds as a percentage
+
+10. Measles: Number of reported Measles cases per 1000 of population
+
+11. BMI: Average Body Mass Index of entire population in each country
+
+12. Under-Five Deaths: Number of deaths below age 5 per 1000 of population
+
+13. Polio: The percentage of 1-year-olds who have Polio immunization
+
+14. Total expenditure: General government expenditure on health as a percentage of total government expenditure 
+
+15. Diphtheria: Diphtheria tetanus toxoid and pertussis (DTP3) immunization coverage among 1-year-olds as a percentage
+
+16. HIV/AIDS: Deaths per 1000 live births from HIV/AIDS within 0-4 years
+
+17. GDP: Gross Domestic Product per capita (in USD)
+
+18. Population: Population of the country
+
+19. Thinness 1-19 years: Prevalence of thinness among children and adolescents for ages 10 to 19 as a percentage
+
+20. Thinness 5-9 years: Prevalence of thinness among children for ages 5 to 9 as a percentage
+
+21. Income composition of resources: Human Development Index (ranging from 0 to 1) in terms of income composition of resources
+
+22. Schooling: Number of years of Schooling (years)
+
+
+# Methods
+
+## Data Preparation
+
+```{r}
+library(leaps)
+library(faraway)
+library(lmtest)
+life = read.csv("life Expectancy Data.csv")
+head(life)
+```
+
+After importing the data, I must prepare it for modeling. 
+
+After reviewing data the I found certain discrepancies in variables such as Infant death, under-five deaths, HIV/AIDS and percentage expenditure. For many of these variables I found that a significant portion of the data was either incomplete or had values that did not match other sources after cross-checking the data. As a result, I decided not to use infant deaths, under-five deaths and HIV/AIDS in our model, since there is too much missing and incorrect data. In addition, I removed entries that reported 0 for the percentage expenditure variable, since it was accurate except for those incorrect entries.
+
+In addition, I decided to remove the Country variable from the data since I wanted to get a general overview of the impact of the variables on Life Expectancy instead of a per country basis. However, a copy of the data including Country was kept for further analysis.
+
+```{r}
+life_new = life[life$percentage.expenditure != 0, ]
+life_new = life_new[life_new$Income.composition.of.resources != 0, ]
+life_new_alt = subset(life_new, select = -c(infant.deaths, under.five.deaths, HIV.AIDS, BMI, Population))
+
+life_new_alt = na.omit(life_new_alt)
+
+life_new = subset(life_new_alt, select = -c(Country))
+str(life_new)
+```
+
+
+## Model Selection
+
+Below is the general main effects model: 
+
+```{r}
+life_mod = lm(Life.expectancy ~., data = life_new)
+```
+
+I find the optimal model using an exhaustive search of the main effects model. I will also try a stepwise search aftwerwards.
+
+```{r}
+all_life_mod = summary(regsubsets(Life.expectancy ~ ., data = life_new))
+all_life_mod$which
+all_life_mod$rss
+```
+
+```{r}
+all_life_mod$adjr2
+```
+
+This gives us the model with the best adjusted R-squared.
+
+```{r}
+(best_r2_ind = which.max(all_life_mod$adjr2))
+```
+
+Here, I extract the predictors of the model with the highest adjusted R-squared values, which I just found above. 
+
+```{r}
+all_life_mod$which[best_r2_ind, ]
+```
+
+I will now calculate AIC and BIC for each of the models with the best RSS, so I need the $n$ and $p$ of the largest possible model, i.e. the model with all predictors.
+
+```{r}
+p = length(coef(life_mod))
+n = length(resid(life_mod))
+```
+
+Finding the AIC:
+
+```{r}
+(life_mod_aic = n * log(all_life_mod$rss / n) + 2 * (2:p)) 
+```
+
+Extracting predictors of model with best AIC: 
+
+```{r}
+best_aic_life = which.min(life_mod_aic)
+all_life_mod$which[best_aic_life,] # best AIC
+```
+
+Fitting the model above: 
+
+```{r}
+life_mod_best_aic = lm(Life.expectancy ~ Adult.Mortality + Alcohol + percentage.expenditure + Total.expenditure + GDP + thinness.5.9.years + Income.composition.of.resources + Schooling, data = life_new) 
+```
+
+```{r}
+extractAIC(life_mod_best_aic)
+```
+
+Now, I repeat the process for BIC.
+
+Finding the BIC: 
+
+```{r}
+(life_mod_bic = n * log(all_life_mod$rss / n) + log(n) * (2:p)) 
+```
+
+```{r}
+which.min(life_mod_bic)
+```
+
+Extracting predictors of model with best BIC:
+
+```{r}
+best_bic_life = which.min(life_mod_bic)
+all_life_mod$which[best_bic_life,] # best BIC
+```
+
+Fitting the model above:
+
+```{r}
+life_mod_best_bic = lm(Life.expectancy ~ Adult.Mortality + Alcohol + percentage.expenditure + Total.expenditure + GDP + thinness.5.9.years + Income.composition.of.resources + Schooling, data = life_new) 
+```
+
+AIC and BIC agree on the model and the number of regressors, so this model seems appropriate when considering just the main effects model. I can now look at the matrix of the dotplots for the relationships of all variables in the model (minus Status, as this is an indicator variable) to determine if I should include any additional terms in the model. I will decide upon the use of additional terms by evaluating using a step-wise process both for AIC and BIC criteria. 
+
+For considering higher order terms, I can use this plot to determine which variables may benefit from a quadratic relationship with the response. I only look at terms that I included in the previous model that I select above. 
+
+```{r fig.height=12, fig.width=12}
+df_aic = subset(life_new, select = -c(Status))
+pairs(df_aic, col = "dodgerblue")
+```
+
+I can then use step-wise selection to start in the middle and test the other models. Based on the relationships above, I chose to include the **interaction term** for percentage expenditure and income composition of resources in the model. I also made two **quadratic terms** to test in the model based on the above plots: percentage expenditure and GDP. Finally, I included **log terms** to test for the significance to the model of the log for percentage expenditure and for GDP. 
+
+It is also clear by looking at these relationships that there is likely colinearity between variables: schooling and composition of resources, and thinness 1 to 19 years and 5 to 9 years (as I might expect). For now, the model selection process will consider these variables, but this is something that will be addressed if it is still a problem in the final model. I should also look out for correlation between percentage and total expenditure. 
+
+
+### AIC Model using step-wise selection: 
+
+```{r}
+life_mod_both_aic = step(
+  life_mod_best_aic, 
+  scope = list(upper = Life.expectancy ~ . + I(percentage.expenditure^2) + (GDP^2) + (percentage.expenditure:Income.composition.of.resources) + log(GDP) + log(percentage.expenditure), lower = Life.expectancy ~ 1), 
+  direction = "both", criterion = c("AIC"), trace = 0)
+```
+
+```{r}
+summary(life_mod_both_aic)$adj.r.squared
+```
+
+```{r}
+summary(life_mod_both_aic)
+```
+
+### BIC Model using step-wise selection: 
+
+```{r}
+life_mod_both_bic = step(
+  life_mod_best_bic, 
+ scope = list(upper = Life.expectancy ~ . + I(percentage.expenditure^2) + (GDP^2) + (percentage.expenditure:Income.composition.of.resources) + log(GDP) + log(percentage.expenditure), lower = Life.expectancy ~ 1), 
+  direction = "both", criterion = c("BIC"), k = log(n), trace = 0)
+```
+
+```{r}
+summary(life_mod_both_bic)$adj.r.squared
+```
+
+```{r}
+summary(life_mod_both_bic) 
+```
+
+As is also the case for the AIC model, in the summary for the BIC model above, the variable for the log of percentage expenditure is less significant than the level, while the log for GDP is actually more significant than the level of GDP. This is something to consider adding into our main effects model. 
+
+Compare this to our original main effects model, which had the same result for AIC and BIC evaluations: 
+
+```{r}
+summary(life_mod_best_bic)
+```
+
+With two less variables, the adjusted R-squared only decreases by 0.002, or 0.2 percentage points. This is a relatively clear trade off, as for a simpler model, I have nearly the same predictive power. Thus, I should be using the main effects model produced by the initial search for an optimal AIC and BIC fit model. However, one term I should consider adding is log of GDP. I will add this variable, and compare the summary to see if this is a significantly improved model. 
+
+```{r}
+life_mod2 = lm(Life.expectancy ~ Adult.Mortality + Alcohol + percentage.expenditure + Total.expenditure + log(GDP) + thinness.5.9.years + Income.composition.of.resources + Schooling, data = life_new)
+summary(life_mod2)
+```
+
+The addition of log of GDP does not improve the adjusted R squared value, so I should get rid of this term. I are left with the model below: 
+
+```{r}
+life_mod3 = lm(Life.expectancy ~ Adult.Mortality + Alcohol + percentage.expenditure + Total.expenditure + thinness.5.9.years + Income.composition.of.resources + Schooling, data = life_new)
+summary(life_mod3)
+```
+
+```{r}
+summary(life_mod_best_bic)$adj.r.squared
+summary(life_mod3)$adj.r.squared
+```
+
+Getting rid of GDP only decreases the model's predictive power, based on the R-squared value, by about 0.004, or 0.4 percentage points, compared to keeping GDP in the model as it was in the main effects model. Thus, I will remove GDP from the model before proceeding. For now, that leaves us with the model stated below: 
+
+**Model Selected:**
+```{r}
+life_mod = lm(Life.expectancy ~ Adult.Mortality + Alcohol + percentage.expenditure + Total.expenditure + thinness.5.9.years + Income.composition.of.resources + Schooling, data = life_new)
+```
+
+
+
+## Diagnostics: Checking Model Assumptions
+
+
+### Variance Inflation
+
+Using the model I have chosen, I will again observe the relationships between the variables to determine if there is any cross-correlation that must be addressed. I can look at the matrix of relationships between the variables left in our selected model, as listed above. 
+
+```{r fig.height=12, fig.width=12}
+life_new_MA = subset(life_new, select = -c(Year, Status, Hepatitis.B, Measles, Polio, Diphtheria, thinness..1.19.years, GDP))
+pairs(life_new_MA, col = "dodgerblue")
+```
+
+It looks like there is colinearity between `income composition of resources` and `schooling`. There is possibly also a relationship between `income composition of resources` and `percentage expenditure`. I can look at the Variance Inflation Factor (VIF) to determine if one or both of these variables should be removed. Likely, I will need income composition of resources, but it is possible I can get eliminate other variables. 
+
+```{r}
+vif(life_mod)
+```
+
+Using a benchmark of 5 to distinguish a large VIF, I see that the VIF's for `Income.composition.of.resources` and `Schooling` are large. This is not a surprise based on the graph and my analysis above. 
+
+Of the variables with high VIF, when looking at the model summary for our selected model (as I produced above), the variable for `income composition of resources` has the highest significance relationship with our response variable, life expectancy. Not only this, but as I observed previously using the matrix of the correlations of the variables, `income composition of resources` is correlated with two other variables in the model. By using just this variable alone, it is likely sufficient for our model. 
+
+I will remove the variable with the lowest significance in the overall model between the two, `Schooling`, and then check the VIF to see if another variable must be removed. 
+
+```{r}
+life_mod_smaller = lm(Life.expectancy ~ Adult.Mortality + Alcohol + percentage.expenditure + Total.expenditure + thinness.5.9.years + Income.composition.of.resources, data = life_new)
+```
+
+
+```{r}
+vif(life_mod_smaller)
+```
+Now, I have a model with variables that have VIF's under our benchmark of 5. I can move on to testing for normality. 
+
+
+```{r}
+summary(life_mod_smaller)
+```
+
+The summary of this model still shows that all variables included are significant. 
+
+#### Normality & Equal Variance Assumptions
+
+```{r}
+plot_fitted_resid = function(model, pointcol = "dodgerblue", linecol = "darkorange") {
+  plot(fitted(model), resid(model), 
+       col = pointcol, pch = 20, cex = 1.5,
+       xlab = "Fitted", ylab = "Residuals")
+  abline(h = 0, col = linecol, lwd = 2)
+}
+
+plot_qq = function(model, pointcol = "dodgerblue", linecol = "darkorange") {
+  qqnorm(resid(model), col = pointcol, pch = 20, cex = 1.5)
+  qqline(resid(model), col = linecol, lwd = 2)
+}
+```
+
+```{r fig.height=6, fig.width=12}
+par(mfrow = c(1,2))
+plot_fitted_resid(life_mod_smaller) 
+plot_qq(life_mod_smaller)
+```
+
+Clearly, this data does not appear to come from a normal distribution. Additionally, the variance exhibits heteroskedasticity. I can verify using these tests below: 
+
+```{r}
+shapiro.test(resid(life_mod_smaller))
+```
+
+```{r}
+bptest(life_mod_smaller)
+```
+
+Perhaps checking for influential observations and removing them will help.
+
+
+### High Leverage observations, Outliers, and Influential Points
+
+#### Observations with High Leverage
+
+```{r}
+life_mod_lev = hatvalues(life_mod_smaller)
+life_mod_lev_mean = mean(life_mod_lev)
+(high_lev = life_mod_lev[life_mod_lev > 2 * life_mod_lev_mean])
+```
+
+Above are the values with high leverage. There are `r sum(life_mod_lev > 2 * life_mod_lev_mean)` observations with higher leverage.
+
+```{r}
+lev_names = names(high_lev)
+unique(life_new_alt[lev_names, 1])
+```
+
+Above are countries with values with high leverage. There are `r length(unique(life_new_alt[lev_names, 1]))` countries where observations with high leverage occur.
+
+#### Outliers
+
+```{r}
+(outlier = rstandard(life_mod_smaller)[abs(rstandard(life_mod_smaller)) > 2])
+```
+
+Above are the values of the outliers. There are `r sum(abs(rstandard(life_mod_smaller)) > 2)` outliers.
+
+```{r}
+out_names = names(outlier)
+unique(life_new_alt[out_names, 1])
+```
+
+Above are countries with outliers. There are `r length(unique(life_new_alt[out_names, 1]))` countries where observations with high leverage occur.
+
+#### Influential Observations
+
+```{r}
+life_mod_cook = cooks.distance(life_mod_smaller)
+(influential = life_mod_cook[life_mod_cook > 4 / length(life_mod_cook)])
+```
+
+Above are the values of the influential observations with their Cook's distance reported. There are `r sum(life_mod_cook > 4 / length(life_mod_cook))` influential observations.
+
+```{r}
+infl_names = names(influential)
+unique(life_new_alt[infl_names, 1])
+```
+
+Above are the countries with influential observations. There are `r length(unique(life_new_alt[infl_names, 1]))` countries where observations with high leverage occur.
+
+
+It appears that the high leverage observations, outliers, and influential observations came from the same countries.
+
+
+Since our chosen model violates both the normality and equal variance assumptions, perhaps removing the influential observations from the data may help:
+
+
+I will now refit the model without any points identified as influential. After the adjustments I have made so far, if I now observe the summary of the updated model I produced:
+```{r}
+life_mod_sub = lm(Life.expectancy ~ Adult.Mortality + Alcohol + percentage.expenditure + Total.expenditure + thinness.5.9.years + Income.composition.of.resources, data = life_new, subset = life_mod_cook <= 4 / length(life_mod_cook))
+
+summary(life_mod_sub)
+```
+
+I see that the variable `percentage expenditure` is no longer significant. I can remove this variable from the model and observe the change in R-squared value: 
+
+```{r}
+life_mod_sub1 = lm(Life.expectancy ~ Adult.Mortality + Alcohol + Total.expenditure + thinness.5.9.years + Income.composition.of.resources, data = life_new, subset = life_mod_cook <= 4 / length(life_mod_cook))
+
+summary(life_mod_sub1)
+```
+
+There is no change in the adjusted R-squared after removing the variable `percentage expenditure`, so I will no longer include it in the analysis as it is not helpful in improving the predictive power of the overall model. 
+
+
+Now, I can check the variance and normality assumptions again with our adjusted model to see if they have improved: 
+```{r fig.height=6, fig.width=12}
+par(mfrow = c(1, 2))
+plot_fitted_resid(life_mod_sub1)
+plot_qq(life_mod_sub1)
+```
+
+
+This data appears relatively normal, and looks like it is likley that it comes from a normal distribution. However, the plot of fitted vs. residuals shows there may be heteroskedasticity. I can verify if this is the case for each of these using the tests below: 
+
+
+Shapiro-Wilk Test: 
+```{r}
+shapiro.test(resid(life_mod_sub1))
+```
+
+I reject the null hypothesis that the data is normally distributed in our sampled population according to this result, given a p-value of `r shapiro.test(resid(life_mod_sub1))$p.value`
+
+
+Breusch-Pagan test: 
+```{r}
+bptest(life_mod_sub1)
+```
+
+I reject the null hypothesis that the data exhibit constant variance according to this Breusch-Pagan test, given a p-value that is effectively 0.
+
+
+Here is a colinearity matrix of the remaining variables in the most recently adjusted model. It does not seem that a transformation on any of these variables would improve upon our model any further, both in terms of its predictive power and in terms of satisfying the assumptions.
+
+```{r fig.height=8, fig.width=8}
+life_new_MA2 = subset(life_new, select = -c(Year, Status, percentage.expenditure, Hepatitis.B, Measles, Polio, Diphtheria, thinness..1.19.years, GDP, Schooling))
+pairs(life_new_MA2, col = "dodgerblue")
+```
+
+
+
+# Results
+
+The results section should contain numerical or graphical summaries of your results. You should report a final model you have chosen. There is not necessarily one, singular correct model, but certainly some methods and models are better than others in certain situations. You may use any methods I studied this semester to complete this task, and provide evidence that your final choice of model is a good one. Some possible items to be discussed:
+
+Final Model: 
+```{r}
+Final_Model = lm(Life.expectancy ~ Adult.Mortality + Alcohol + Total.expenditure + thinness.5.9.years + Income.composition.of.resources, data = life_new, subset = life_mod_cook <= 4 / length(life_mod_cook))
+summary(Final_Model)
+```
+
+
+Compared to our initial model simply using an exhaustive search for optimal AIC and BIC values given the main effects model, this model has improved in its adjusted R-squared value by 3.83 percentage points (`r summary(Final_Model)$adj.r.squared` - `r summary(life_mod_best_aic)$adj.r.squared` = `0.0383`). 
+
+Additionally, it has decreased in its number of variables by 3 (`r summary(life_mod_best_aic)$df[3]` - `r summary(Final_Model)$df[3]` = `3`) while improving upon its predictive power. 
+
+I have assessed the relationships between both the response variable (Life Expectancy) with all regressors, as well as the relationship between regressors (colinearity). These visual analyses, as well as running tests to confirm whether or not to include certain relationships in our model, have led us to our current model. In additional, I have identified and removed influential observations. 
+
+
+These improvements led us to a model that is **better** both in terms of the constant variance and the normality assumptions, however, it still did not pass the two tests for these assumptions (as shown in our Methods section). I have concluded that it may not be possible to alter the model in a way that it would return p-values greater than 0.10 for these tests, as transformations I attempted to remedy the heteroskedasticity and non-normality that remain did not improve our model and actually decreased its predictive power. 
+
+```{r fig.height=6, fig.width=12}
+par(mfrow = c(1, 2))
+plot_fitted_resid(Final_Model)
+plot_qq(Final_Model)
+```
+
+
+
+# Discussion
+
+I believe that I have performed the appropriate statistical methods to create a model that can estimate the life expectancy for an individual to a relatively high degree of accuracy given our dataset and observations provided. Our final model found the variables `Adult Mortality`, `Alcohol`, `Total.expenditure`, `thinness 5-9 years` and `income composition of resources` to be significant in predicting `Life Expectancy`. Our model could provide insight to what factors are most important for improving life expectancy. This knowledge can provide guidance to health policy makers as it shows the most important factors that affect a population's life expectancy. For example, lower alcohol consumption, higher governmental healthcare expenditure, and higher wealth equality will lead to higher life expectancy. 
+
+
+
+Although I believe our methodology to be acceptable when I created our model, I found that our model did not pass the tests for constant variance or normality, even at a significance level of $\alpha = 0.10$. Additionally, it should be noted that in the final model, I removed influential observations from our dataset before creating the model. For these reasons, the accuracy of our model is suspect and its results should be further examined before making decisions based on them. Further, in order to use this model in any real analysis for the purpose of any policy, healthcare, or other advising that is possible utilizing our model, it should be further investigated how the data for each country, throughout each year, was collected, stored, and entered into the database from which I retrieved it. For instance, whether a country was developing or not was not a significant variable in the model from the start. This seems peculiar, and I think more investigation should be done regarding this in particular before this model is utilized as means of predicting life expectancy. 
+
+
+
+In its entirety, this project shows that model selection, and often facets of statistics in general, is not an exact science. The creation and adjustment of a model depends on what factors are weighed most heavily, and what statistics it is most important to optimize. There are tradeoffs at every step of the way. One tradeoff I frequently made was to sacrifice a small number of percentage points of the adjusted R-squared value for one or a few less predictors in the model. I did this in order to avoid overfitting based on the fact that, given this model includes data for both developing and developed countries, an overfitted model could be especially harmful in its ability to make predictions about life expectancy based on these variables. Further, this process proves that simply allowing `R` to select a model based on AIC or BIC, whether you are using stepwise, forwards or backwards selection, does not mean that your work is done. It is a continuous process of trial and error to arrive at a model that is actually useful, and practical given the goal of the study. 
+
